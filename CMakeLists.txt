@@ -3,5 +3,36 @@ project(defences)
 
 set(CMAKE_CXX_STANDARD 11)
 
-set(SOURCE_FILES main.cpp)
+SET(LIBGIT2_DEFINITIONS ${PC_LIBGIT2_CFLAGS_OTHER})
+
+FIND_PATH(LIBGIT2_INCLUDE_DIR NAMES git2.h
+        HINTS
+        ${PC_LIBGIT2_INCLUDEDIR}
+        ${PC_LIBGIT2_INCLUDE_DIRS}
+        )
+
+FIND_LIBRARY(LIBGIT2_LIBRARIES NAMES git2
+        HINTS
+        ${PC_LIBGIT2_LIBDIR}
+        ${PC_LIBGIT2_LIBRARY_DIRS}
+        )
+
+INCLUDE(FindPackageHandleStandardArgs)
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(libgit2 DEFAULT_MSG LIBGIT2_LIBRARIES LIBGIT2_INCLUDE_DIR)
+
+MARK_AS_ADVANCED(LIBGIT2_INCLUDE_DIR LIBGIT2_LIBRARIES)
+
+find_library(LIBGIT2_LIBRARIES NAMES git2)
+
+include_directories(${PROJECT_SOURCE_DIR})
+
+
+include_directories(libinotifytools/src)
+
+add_subdirectory(libinotifytools/src)
+
+set(SOURCE_FILES main.cpp gittest.cpp)
 add_executable(defences ${SOURCE_FILES})
+
+add_executable(gittest gittest.cpp)
+target_link_libraries(gittest git2)
