@@ -1174,11 +1174,11 @@ struct inotify_event * inotifytools_next_events( long int timeout, int num_event
 	static struct timeval * read_timeout_ptr;
 	read_timeout_ptr = ( timeout < 0 ? NULL : &read_timeout );
 
-	/*FD_ZERO(&read_fds);
+	FD_ZERO(&read_fds);
 	FD_SET(inotify_fd, &read_fds);
 	rc = select(inotify_fd + 1, &read_fds,
-	            NULL, NULL, read_timeout_ptr);*/
-	/*if ( rc < 0 ) {
+	            NULL, NULL, read_timeout_ptr);
+	if ( rc < 0 ) {
 		// error
 		error = errno;
 		return NULL;
@@ -1186,7 +1186,7 @@ struct inotify_event * inotifytools_next_events( long int timeout, int num_event
 	else if ( rc == 0 ) {
 		// timeout
 		return NULL;
-	}*/
+	}
 
 	// wait until we have enough bytes to read
 	do {

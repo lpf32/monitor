@@ -1,2 +1,4 @@
 .idea/
 cmake-build-debug/
+gittest.cpp
+sentry_test.cpp
