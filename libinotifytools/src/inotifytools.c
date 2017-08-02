@@ -196,12 +196,12 @@ int onestr_to_event(char const * event);
  * @param  mesg  A human-readable error message shown if assertion fails.
  */
 static void _niceassert( long cond, int line, char const * file,
-                  char const * condstr, char const * mesg ) {
+						 char const * condstr, char const * mesg ) {
 	if ( cond ) return;
 
 	if ( mesg ) {
 		fprintf(stderr, "%s:%d assertion ( %s ) failed: %s\n", file, line,
-		        condstr, mesg );
+				condstr, mesg );
 	}
 	else {
 		fprintf(stderr, "%s:%d assertion ( %s ) failed.\n", file, line, condstr);
@@ -312,8 +312,8 @@ void destroy_watch(watch *w) {
  * @internal
  */
 void cleanup_tree(const void *nodep,
-                 const VISIT which,
-                 const int depth, void* arg) {
+				  const VISIT which,
+				  const int depth, void* arg) {
 	if (which != endorder && which != leaf) return;
 	watch *w = (watch*)nodep;
 	destroy_watch(w);
@@ -349,9 +349,9 @@ void inotifytools_cleanup() {
  * @internal
  */
 void empty_stats(const void *nodep,
-                 const VISIT which,
-                 const int depth, void *arg) {
-    if (which != endorder && which != leaf) return;
+				 const VISIT which,
+				 const int depth, void *arg) {
+	if (which != endorder && which != leaf) return;
 	watch *w = (watch*)nodep;
 	w->hit_access = 0;
 	w->hit_modify = 0;
@@ -373,9 +373,9 @@ void empty_stats(const void *nodep,
  * @internal
  */
 void replace_filename(const void *nodep,
-                      const VISIT which,
-                      const int depth, void *arg) {
-    if (which != endorder && which != leaf) return;
+					  const VISIT which,
+					  const int depth, void *arg) {
+	if (which != endorder && which != leaf) return;
 	watch *w = (watch*)nodep;
 	char *old_name = ((char**)arg)[0];
 	char *new_name = ((char**)arg)[1];
@@ -398,9 +398,9 @@ void replace_filename(const void *nodep,
  * @internal
  */
 void get_num(const void *nodep,
-             const VISIT which,
-             const int depth, void *arg) {
-    if (which != endorder && which != leaf) return;
+			 const VISIT which,
+			 const int depth, void *arg) {
+	if (which != endorder && which != leaf) return;
 	++(*((int*)arg));
 }
 
@@ -472,7 +472,7 @@ void inotifytools_initialize_stats() {
  */
 int inotifytools_str_to_event_sep(char const * event, char sep) {
 	if ( strchr( "_" "abcdefghijklmnopqrstuvwxyz"
-	                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ", sep ) ) {
+						 "ABCDEFGHIJKLMNOPQRSTUVWXYZ", sep ) ) {
 		return -1;
 	}
 
@@ -766,7 +766,7 @@ char * inotifytools_filename_from_wd( int wd ) {
 	niceassert( init, "inotifytools_initialize not called yet" );
 	watch *w = watch_from_wd(wd);
 	if (!w)
-        return NULL;
+		return NULL;
 
 	return w->filename;
 }
@@ -829,7 +829,7 @@ void inotifytools_set_filename_by_wd( int wd, char const * filename ) {
  * @param newname New filename.
  */
 void inotifytools_set_filename_by_filename( char const * oldname,
-                                            char const * newname ) {
+											char const * newname ) {
 	watch *w = watch_from_filename(oldname);
 	if (!w) return;
 	if (w->filename) free(w->filename);
@@ -859,7 +859,7 @@ void inotifytools_set_filename_by_filename( char const * oldname,
  * @endcode
  */
 void inotifytools_replace_filename( char const * oldname,
-                                    char const * newname ) {
+									char const * newname ) {
 	if ( !oldname || !newname ) return;
 	char *names[2+sizeof(int)/sizeof(char*)];
 	names[0] = (char*)oldname;
@@ -876,7 +876,7 @@ int remove_inotify_watch(watch *w) {
 	int status = inotify_rm_watch( inotify_fd, w->wd );
 	if ( status < 0 ) {
 		fprintf(stderr, "Failed to remove watch on %s: %s\n", w->filename,
-		        strerror(status) );
+				strerror(status) );
 		error = status;
 		return 0;
 	}
@@ -991,7 +991,7 @@ int inotifytools_watch_files( char const * filenames[], int events ) {
 			} // if ( wd == -1 )
 			else {
 				fprintf( stderr, "Failed to watch %s: returned wd was %d "
-				         "(expected -1 or >0 )", filenames[i], wd );
+						"(expected -1 or >0 )", filenames[i], wd );
 				// no appropriate value for error
 				return 0;
 			} // else
@@ -1000,7 +1000,7 @@ int inotifytools_watch_files( char const * filenames[], int events ) {
 		char *filename;
 		// Always end filename with / if it is a directory
 		if ( !isdir(filenames[i])
-		     || filenames[i][strlen(filenames[i])-1] == '/') {
+			 || filenames[i][strlen(filenames[i])-1] == '/') {
 			filename = strdup(filenames[i]);
 		}
 		else {
@@ -1128,7 +1128,7 @@ struct inotify_event * inotifytools_next_events( long int timeout, int num_event
 
 	// first_byte is index into event buffer
 	if ( first_byte != 0
-	  && first_byte <= (int)(bytes - sizeof(struct inotify_event)) ) {
+		 && first_byte <= (int)(bytes - sizeof(struct inotify_event)) ) {
 
 		ret = (struct inotify_event *)((char *)&event[0] + first_byte);
 		first_byte += sizeof(struct inotify_event) + ret->len;
@@ -1146,9 +1146,9 @@ struct inotify_event * inotifytools_next_events( long int timeout, int num_event
 			// Boy I hope this code works.
 			// But I think this can never happen due to how inotify is written.
 			niceassert( (long)((char *)&event[0] +
-			            sizeof(struct inotify_event) +
-			            event[0].len) <= (long)ret,
-			            "extremely unlucky user, death imminent" );
+							   sizeof(struct inotify_event) +
+							   event[0].len) <= (long)ret,
+						"extremely unlucky user, death imminent" );
 			// how much of the event do we have?
 			bytes = (char *)&event[0] + bytes - (char *)ret;
 			memcpy( &event[0], ret, bytes );
@@ -1174,11 +1174,11 @@ struct inotify_event * inotifytools_next_events( long int timeout, int num_event
 	static struct timeval * read_timeout_ptr;
 	read_timeout_ptr = ( timeout < 0 ? NULL : &read_timeout );
 
-	FD_ZERO(&read_fds);
+	/*FD_ZERO(&read_fds);
 	FD_SET(inotify_fd, &read_fds);
 	rc = select(inotify_fd + 1, &read_fds,
-	            NULL, NULL, read_timeout_ptr);
-	if ( rc < 0 ) {
+	            NULL, NULL, read_timeout_ptr);*/
+	/*if ( rc < 0 ) {
 		// error
 		error = errno;
 		return NULL;
@@ -1186,13 +1186,13 @@ struct inotify_event * inotifytools_next_events( long int timeout, int num_event
 	else if ( rc == 0 ) {
 		// timeout
 		return NULL;
-	}
+	}*/
 
 	// wait until we have enough bytes to read
 	do {
 		rc = ioctl( inotify_fd, FIONREAD, &bytes_to_read );
 	} while ( !rc &&
-	          bytes_to_read < sizeof(struct inotify_event)*num_events );
+			  bytes_to_read < sizeof(struct inotify_event)*num_events );
 
 	if ( rc == -1 ) {
 		error = errno;
@@ -1200,14 +1200,14 @@ struct inotify_event * inotifytools_next_events( long int timeout, int num_event
 	}
 
 	this_bytes = read(inotify_fd, &event[0] + bytes,
-	                  sizeof(struct inotify_event)*MAX_EVENTS - bytes);
+					  sizeof(struct inotify_event)*MAX_EVENTS - bytes);
 	if ( this_bytes < 0 ) {
 		error = errno;
 		return NULL;
 	}
 	if ( this_bytes == 0 ) {
 		fprintf(stderr, "Inotify reported end-of-file.  Possibly too many "
-		                "events occurred at once.\n");
+				"events occurred at once.\n");
 		return NULL;
 	}
 	bytes += this_bytes;
@@ -1215,7 +1215,7 @@ struct inotify_event * inotifytools_next_events( long int timeout, int num_event
 	ret = &event[0];
 	first_byte = sizeof(struct inotify_event) + ret->len;
 	niceassert( first_byte <= bytes, "ridiculously long filename, things will "
-	                                 "almost certainly screw up." );
+			"almost certainly screw up." );
 	if ( first_byte == bytes ) {
 		first_byte = 0;
 	}
@@ -1287,7 +1287,7 @@ int inotifytools_watch_recursively( char const * path, int events ) {
  *       as to whether or not those files will be watched.
  */
 int inotifytools_watch_recursively_with_exclude( char const * path, int events,
-                                                 char const ** exclude_list ) {
+												 char const ** exclude_list ) {
 	niceassert( init, "inotifytools_initialize not called yet" );
 
 	DIR * dir;
@@ -1319,7 +1319,7 @@ int inotifytools_watch_recursively_with_exclude( char const * path, int events,
 	// Watch each directory within this directory
 	while ( ent ) {
 		if ( (0 != strcmp( ent->d_name, "." )) &&
-		     (0 != strcmp( ent->d_name, ".." )) ) {
+			 (0 != strcmp( ent->d_name, ".." )) ) {
 			nasprintf(&next_file,"%s%s", my_path, ent->d_name);
 			if ( -1 == lstat64( next_file, &my_stat ) ) {
 				error = errno;
@@ -1332,7 +1332,7 @@ int inotifytools_watch_recursively_with_exclude( char const * path, int events,
 				}
 			}
 			else if ( S_ISDIR( my_stat.st_mode ) &&
-			          !S_ISLNK( my_stat.st_mode )) {
+					  !S_ISLNK( my_stat.st_mode )) {
 				free( next_file );
 				nasprintf(&next_file,"%s%s/", my_path, ent->d_name);
 				static unsigned int no_watch;
@@ -1349,7 +1349,7 @@ int inotifytools_watch_recursively_with_exclude( char const * path, int events,
 						--exclude_length;
 					}
 					if ( strlen(next_file) == (unsigned)(exclude_length + 1) &&
-					    !strncmp(*exclude_entry, next_file, exclude_length)) {
+						 !strncmp(*exclude_entry, next_file, exclude_length)) {
 						// directory found in exclude list
 						no_watch = 1;
 					}
@@ -1357,12 +1357,12 @@ int inotifytools_watch_recursively_with_exclude( char const * path, int events,
 				if (!no_watch) {
 					static int status;
 					status = inotifytools_watch_recursively_with_exclude(
-					              next_file,
-					              events,
-					              exclude_list );
+							next_file,
+							events,
+							exclude_list );
 					// For some errors, we will continue.
 					if ( !status && (EACCES != error) && (ENOENT != error) &&
-					     (ELOOP != error) ) {
+						 (ELOOP != error) ) {
 						free( next_file );
 						if ( my_path != path ) free( my_path );
 						closedir( dir );
@@ -1383,7 +1383,7 @@ int inotifytools_watch_recursively_with_exclude( char const * path, int events,
 
 	int ret = inotifytools_watch_file( my_path, events );
 	if ( my_path != path ) free( my_path );
-        return ret;
+	return ret;
 }
 
 /**
@@ -1577,9 +1577,9 @@ int inotifytools_get_stat_total( int event ) {
  *       establish the watch.
  */
 int inotifytools_get_stat_by_filename( char const * filename,
-                                                int event ) {
+									   int event ) {
 	return inotifytools_get_stat_by_wd( inotifytools_wd_from_filename(
-	       filename ), event );
+			filename ), event );
 }
 
 /**
@@ -1819,7 +1819,7 @@ int inotifytools_sprintf( char * out, struct inotify_event* event, char* fmt ) {
  * @endcode
  */
 int inotifytools_snprintf( char * out, int size,
-                           struct inotify_event* event, char* fmt ) {
+						   struct inotify_event* event, char* fmt ) {
 	static char * filename, * eventname, * eventstr;
 	static unsigned int i, ind;
 	static char ch1;
@@ -1848,7 +1848,7 @@ int inotifytools_snprintf( char * out, int size,
 
 	ind = 0;
 	for ( i = 0; i < strlen(fmt) &&
-	             (int)ind < size - 1; ++i ) {
+				 (int)ind < size - 1; ++i ) {
 		if ( fmt[i] != '%' ) {
 			out[ind++] = fmt[i];
 			continue;
@@ -1900,7 +1900,7 @@ int inotifytools_snprintf( char * out, int size,
 
 				now = time(0);
 				if ( 0 >= strftime( timestr, MAX_STRLEN-1, timefmt,
-				                    localtime( &now ) ) ) {
+									localtime( &now ) ) ) {
 
 					// time format probably invalid
 					error = EINVAL;
@@ -2096,3 +2096,4 @@ struct rbtree *inotifytools_wd_sorted_by_event(int sort_event)
 	rbcloselist(all);
 	return ret;
 }
+
