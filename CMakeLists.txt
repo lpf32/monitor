@@ -27,23 +27,24 @@ find_library(LIBGIT2_LIBRARIES NAMES git2)
 include_directories(${PROJECT_SOURCE_DIR})
 
 
-FIND_PATH(LIBRAVEN_INCLUDE_DIR NAMES raven.h)
-
-find_library(LIBRAVEN_LIBRARIES  NAMES ravenpp)
+#FIND_PATH(LIBRAVEN_INCLUDE_DIR NAMES raven.h)
+#
+#find_library(LIBRAVEN_LIBRARIES  NAMES ravenpp)
 
 
 include_directories(libinotifytools/src)
 
 add_subdirectory(libinotifytools/src)
 
-set(SOURCE_FILES main.cpp gittest.cpp sentry_test.cpp)
-add_executable(defences ${SOURCE_FILES})
+add_subdirectory(git)
+include_directories(git)
 
-add_executable(gittest gittest.cpp)
-target_link_libraries(gittest git2)
 
-add_subdirectory(diff)
-include_directories(diff)
 
-add_executable(sentry_test sentry_test.cpp)
-target_link_libraries(sentry_test ravenpp boost_iostreams z)
+add_subdirectory(test)
+
+#add_executable(sentry_test sentry_test.cpp)
+#target_link_libraries(sentry_test ravenpp boost_iostreams z)
+
+add_executable(monitor monitor.c)
+target_link_libraries(monitor libinotify git2 libgit)

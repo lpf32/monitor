@@ -158,7 +158,8 @@ setup_output (name0, name1, depth)
   current_name0 = name0;
   current_name1 = name1;
   current_depth = depth;
-  outfile = 0;
+    if (outfile == NULL)
+        outfile = 0;
 }
 
 #if HAVE_FORK
@@ -269,24 +270,24 @@ begin_output ()
 void
 finish_output ()
 {
-  if (outfile != 0 && outfile != stdout)
-    {
-      int wstatus;
-      if (ferror (outfile))
-	fatal ("write error");
-#if ! HAVE_FORK
-      wstatus = pclose (outfile);
-#else /* HAVE_FORK */
-      if (fclose (outfile) != 0)
-	pfatal_with_name ("write error");
-      if (waitpid (pr_pid, &wstatus, 0) < 0)
-	pfatal_with_name ("waitpid");
-#endif /* HAVE_FORK */
-      if (wstatus != 0)
-	fatal ("subsidiary pr failed");
-    }
-
-  outfile = 0;
+//  if (outfile != 0 && outfile != stdout)
+//    {
+//      int wstatus;
+//      if (ferror (outfile))
+//	fatal ("write error");
+//#if ! HAVE_FORK
+//      wstatus = pclose (outfile);
+//#else /* HAVE_FORK */
+//      if (fclose (outfile) != 0)
+//	pfatal_with_name ("write error");
+//      if (waitpid (pr_pid, &wstatus, 0) < 0)
+//	pfatal_with_name ("waitpid");
+//#endif /* HAVE_FORK */
+//      if (wstatus != 0)
+//	fatal ("subsidiary pr failed");
+//    }
+//
+//  outfile = 0;
 }
 
 /* Compare two lines (typically one from each input file)

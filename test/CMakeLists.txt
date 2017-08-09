@@ -1,0 +1,2 @@
+add_executable(inotify_test inotify_test.cpp)
+target_link_libraries(inotify_test libinotify)

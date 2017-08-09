@@ -1189,10 +1189,14 @@ struct inotify_event * inotifytools_next_events( long int timeout, int num_event
 	}*/
 
 	// wait until we have enough bytes to read
-	do {
+	/*do {
 		rc = ioctl( inotify_fd, FIONREAD, &bytes_to_read );
 	} while ( !rc &&
-			  bytes_to_read < sizeof(struct inotify_event)*num_events );
+			  bytes_to_read < sizeof(struct inotify_event)*num_events );*/
+
+	rc = ioctl( inotify_fd, FIONREAD, &bytes_to_read );
+	if (!rc && bytes_to_read < sizeof(struct inotify_event)*num_events)
+		return NULL;
 
 	if ( rc == -1 ) {
 		error = errno;
