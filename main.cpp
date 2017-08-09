@@ -4,8 +4,13 @@
 #include <stdlib.h>
 #include <sys/inotify.h>
 #include <unistd.h>
+#include <netinet/in.h>
+#include "monitor.h"
+#include <stdlib.h>
+#include <string.h>
+#include <arpa/inet.h>
 
-static void handle_events(int fd, int *wd, int argc, char* argv[])
+/*static void handle_events(int fd, int *wd, int argc, char* argv[])
 {
     char buf[4096]
         __attribute__((aligned(__alignof__(struct inotify_event))));
@@ -134,4 +139,34 @@ int main(int argc, char *argv[]) {
     close(fd);
     free(wd);
     exit(EXIT_SUCCESS);
+}*/
+
+int main() {
+    int sockfd, n;
+    struct sockaddr_in servaddr;
+    char buf[4096];
+
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("socket error");
+        exit(EXIT_FAILURE);
+    }
+
+    bzero(&servaddr, sizeof(servaddr));
+
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(PORT);
+
+    if (inet_pton(AF_INET, "127.0.0.1", &servaddr.sin_addr) < 0) {
+        perror("inet_pton");
+        exit(EXIT_FAILURE);
+    }
+
+    if (connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0)
+    {
+        perror("connect");
+        exit(EXIT_FAILURE);
+    }
+
+    snprintf(buf, sizeof(buf), "GIT\r\nflush\r\n");
+    write(sockfd, buf, strlen(buf));
 }

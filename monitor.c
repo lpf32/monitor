@@ -6,13 +6,14 @@
 #include <stdlib.h>
 #include <dirent.h>
 #include <errno.h>
-#include <zconf.h>
+#include <unistd.h>
 #include "monitor.h"
 #include "common.h"
 #include <sys/stat.h>
 #include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <poll.h>
 
 /*void abort_handler(int signum)
 {
@@ -33,8 +34,11 @@ int socket_INIT()
 {
     int sockfd, n;
     struct sockaddr_in servaddr;
+    int yes = 1;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &yes, sizeof(yes));
 
     bzero(&servaddr, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
@@ -247,57 +251,15 @@ int get_line(int sock,char *buf, int size)
     return(i);
 }
 
-static void handle_events(int fd) {
-    char buf[4096]
-            __attribute__((aligned(__alignof__(struct inotify_event))));
-    struct inotify_event *event;
-    int i;
-    ssize_t len;
-    char *ptr;
 
-
-    len = read(fd, buf, sizeof buf);
-    if (len == -1 && errno != EAGAIN)
-    {
-        perror("read");
-        exit(EXIT_FAILURE);
-    }
-
-    if (len <= 0)
-        return;
-
-    for (ptr = buf; ptr < buf + len;
-         ptr += sizeof(struct inotify_event) + event->len)
-    {
-        event = (struct inotify_event *) ptr;
-
-        if (event) {
-            inotifytools_printf(event, "%T %w%f %e\n");
-            switch (event->mask) {
-                case IN_ACCESS:
-                case IN_OPEN:
-                case IN_CLOSE_NOWRITE:
-                case IN_CLOSE:
-                case IN_ATTRIB:
-                case IN_CREATE:
-                    break;
-                case IN_CLOSE_WRITE:
-                case IN_DELETE:
-                case IN_DELETE_SELF:
-                case IN_MODIFY:
-                    handle_diff(event);
-                    break;
-            }
-        }
-    }
-}
 
 int main() {
     // initialize and watch the entire directory tree from the current working
     // directory downwards for all events
 
-    int listenfd, maxfd;
+    int listenfd, clifd, maxfd;
     static fd_set read_fds;
+    struct pollfd fds[2];
     char buf[4096];
     int rc;
     int n;
@@ -320,53 +282,52 @@ int main() {
 
     listenfd = socket_INIT();
 
-    maxfd = listenfd;
-    FD_ZERO(&read_fds);
+    fds[0].fd = listenfd;
+    fds[0].events = POLLRDNORM | POLLIN;
 
-    FD_SET(listenfd, &read_fds);
-    // set time format to 24 hour time, HH:MM:SS
-    inotifytools_set_printf_timefmt( "%T" );
-    FD_SET(inotify_fd, &read_fds);
+    fds[1].fd = inotify_fd;
+    fds[1].events = POLLRDNORM | POLLIN;
 
-    if (inotify_fd > maxfd)
-        maxfd = inotify_fd;
 
     for (;;) {
-        rc = select(maxfd + 1, &read_fds, NULL, NULL, NULL);
+        rc = poll(fds, 2, -1);
 
         if (rc < 0) {
             perror("select");
             exit(EXIT_FAILURE);
         }
 
-        if (FD_ISSET(inotify_fd, &read_fds)) {
-
-        // Output all events as "<timestamp> <path> <events>"
-        struct inotify_event *event = inotifytools_next_event(-1);
-        while (event) {
-            inotifytools_printf(event, "%T %w%f %e\n");
-            switch (event->mask) {
-                case IN_ACCESS:
-                case IN_OPEN:
-                case IN_CLOSE_NOWRITE:
-                case IN_CLOSE:
-                case IN_ATTRIB:
-                case IN_CREATE:
-                    break;
-                case IN_CLOSE_WRITE:
-                case IN_DELETE:
-                case IN_DELETE_SELF:
-                case IN_MODIFY:
-                    handle_diff(event);
-                    break;
+        if (fds[1].revents & POLLIN) {
+            // Output all events as "<timestamp> <path> <events>"
+            struct inotify_event *event = inotifytools_next_event(-1);
+            while (event) {
+                inotifytools_printf(event, "%T %w%f %e\n");
+                switch (event->mask) {
+                    case IN_ACCESS:
+                    case IN_OPEN:
+                    case IN_CLOSE_NOWRITE:
+                    case IN_CLOSE:
+                    case IN_ATTRIB:
+                    case IN_CREATE:
+                        break;
+                    case IN_CLOSE_WRITE:
+                    case IN_DELETE:
+                    case IN_DELETE_SELF:
+                    case IN_MODIFY:
+                        handle_diff(event);
+                        break;
+                }
+                event = inotifytools_next_event(-1);
             }
-            event = inotifytools_next_event(-1);
-        }
         } else {
-            n = get_line(listenfd, buf, sizeof(buf));
+            /*n = get_line(listenfd, buf, sizeof(buf));
             if (n > 0) {
-
-            }
+                printf("%s\n", buf);
+            }*/
+            clifd = accept(listenfd, NULL, NULL);
+            read(clifd, buf, sizeof(buf));
+            printf("%s\n", buf);
+            close(clifd);
         }
     }
 
