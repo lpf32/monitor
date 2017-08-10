@@ -14,6 +14,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <fcntl.h>
+#include <time.h>
 
 /*void abort_handler(int signum)
 {
@@ -29,6 +31,14 @@ void signal_handler()
 //    sigaction(SIGABRT, &new_action, NULL);
     signal(SIGABRT, SIG_IGN);
 }*/
+
+FILE *log;
+char command_buf[4096];
+FILE *rc_file;
+char command[4096];
+
+char sentry_buf[4096];
+
 
 int socket_INIT()
 {
@@ -61,13 +71,9 @@ int socket_INIT()
 void init()
 {
     inotify_INIT();
-    diff_INIT();
+    log_INIT();
 }
 
-void diff_INIT()
-{
-
-}
 
 void inotify_INIT()
 {
@@ -78,22 +84,6 @@ void inotify_INIT()
     }
 }
 
-void git_INIT()
-{
-    char *argv[3];
-    argv[0] = malloc(100);
-    argv[1] = malloc(100);
-    argv[2] = malloc(100);
-    argv[3] = malloc(100);
-
-    argv[1] = "clone";
-    argv[2] = GIT_REMOTE;
-    argv[3] = GIT_PATH;
-    dir_exists(GIT_PATH);
-
-    git_libgit2_init();
-    git_warpper(4, argv);
-}
 
 int remove_directory(const char *path)
 {
@@ -162,11 +152,12 @@ int dir_exists(char *path) {
     int rc;
     if (dir)
     {
-        rc = remove_directory(path);
-        if (rc < 0) {
-            perror("rmdir");
-            exit(EXIT_FAILURE);
-        }
+//        rc = remove_directory(path);
+//        if (rc < 0) {
+//            perror("rmdir");
+//            exit(EXIT_FAILURE);
+//        }
+        return 1;
     }
     else if (errno != ENOENT)
     {
@@ -175,6 +166,94 @@ int dir_exists(char *path) {
 
     }
 
+    return 0;
+
+}
+
+int handle_creat(struct inotify_event * event)
+{
+    char *pathname = NULL;
+    char *eventname = NULL;
+    char filename[4096];
+    char git_filename[4096];
+    char buf[1024];
+    int rc;
+
+    if (event->len > 0)
+        eventname = event->name;
+    else
+        return 0;
+
+    pathname = inotifytools_filename_from_wd(event->wd);
+
+    snprintf(filename, sizeof(filename), "%s%s", pathname, eventname);
+
+    snprintf(git_filename, sizeof(git_filename), "%s%s", GIT_PATH, filename + strlen(WEB_PATH));
+
+
+    if (event->mask & IN_ISDIR)
+    {
+        rc = dir_exists(git_filename);
+    } else {
+        rc = access( git_filename, F_OK ) != -1? 1: 0;
+    }
+
+    if (rc == 0) {
+        snprintf(command, sizeof command, "rm -rf %s 2>&1", filename);
+
+        rc_file = popen(command, "r");
+        rc = fread(command_buf, sizeof command_buf, 1, rc_file);
+        rc = fclose(rc_file);
+
+        snprintf(buf, sizeof buf, "%s was created", filename);
+        send_sentry(buf, command_buf);
+        if (rc != 0) {
+            sys_error("git clone error", rc);
+        }
+    }
+}
+
+int handle_del(struct inotify_event * event) {
+    char *pathname = NULL;
+    char *eventname = NULL;
+    char filename[4096];
+    char git_filename[4096];
+    char buf[1024];
+    int rc;
+
+    if (event->len > 0)
+        eventname = event->name;
+    else
+        return 0;
+
+    pathname = inotifytools_filename_from_wd(event->wd);
+
+    snprintf(filename, sizeof(filename), "%s%s", pathname, eventname);
+
+    snprintf(git_filename, sizeof(git_filename), "%s%s", GIT_PATH, filename + strlen(WEB_PATH));
+
+
+    if (event->mask & IN_ISDIR)
+    {
+        rc = dir_exists(git_filename);
+    } else {
+        rc = access( git_filename, F_OK ) != -1? 1: 0;
+    }
+
+    if (rc == 1) {
+
+        snprintf(command, sizeof command, "cp -rf %s %s 2>&1", git_filename, filename);
+
+        rc_file = popen(command, "r");
+        rc = fread(command_buf, sizeof command_buf, 1, rc_file);
+        rc = fclose(rc_file);
+
+        snprintf(buf, sizeof buf, "%s was deleted", filename);
+        send_sentry(buf, command_buf);
+        if (rc != 0) {
+            sys_error("git clone error", rc);
+        }
+    }
 }
 
 int handle_diff(struct inotify_event * event)
@@ -183,7 +262,6 @@ int handle_diff(struct inotify_event * event)
     char * eventname = NULL;
     char filename[4096];
     char git_filename[4096];
-    char command[4096];
 
     if (event->len > 0)
         eventname = event->name;
@@ -251,7 +329,42 @@ int get_line(int sock,char *buf, int size)
     return(i);
 }
 
+void log_INIT()
+{
+    log = fopen(LOG_PATH, "a");
+    if (log == NULL) {
+        sys_error("fopen error", errno);
+    }
+}
 
+
+
+int sys_error(char *message, int errnum)
+{
+    static time_t ticks;
+    ticks = time(NULL);
+
+    snprintf(sentry_buf, sizeof sentry_buf, "[%.24s] %s: %s: %s\n", ctime(&ticks), message ,strerror(errnum), command_buf);
+
+//    snprintf(command, sizeof command, "%s/sentry_report.py %s", WORK_PATH, message);
+//    rc_file = popen(command, "w");
+//    fwrite(buf, sizeof buf, 1, rc_file);
+//    fclose(rc_file);
+
+    send_sentry(message, sentry_buf);
+
+
+    fwrite(sentry_buf, strlen(sentry_buf), 1, log);
+    exit(EXIT_FAILURE);
+}
+
+int send_sentry(char *message, char *content)
+{
+    snprintf(command, sizeof command, "%s/sentry_report.py %s", WORK_PATH, message);
+    rc_file = popen(command, "w");
+    fwrite(content, strlen(content), 1, rc_file);
+    fclose(rc_file);
+}
 
 int main() {
     // initialize and watch the entire directory tree from the current working
@@ -263,22 +376,27 @@ int main() {
     char buf[4096];
     int rc;
     int n;
+    nfds_t fdset = 2;
+
     init();
+    rc = dir_exists(GIT_PATH);
+    if (rc == 1)
     {
-        char *argv[4];
-        argv[0] = malloc(100);
-        argv[1] = malloc(100);
-        argv[2] = malloc(100);
-        argv[3] = malloc(100);
-
-        argv[1] = "clone";
-        argv[2] = GIT_REMOTE;
-        argv[3] = GIT_PATH;
-        dir_exists(GIT_PATH);
-
-        git_libgit2_init();
-        git_warpper(4, argv);
+        rc = remove_directory(GIT_PATH);
+        if (rc < 0) {
+            sys_error("git clone error", rc);
+        }
     }
+
+    snprintf(command, sizeof command, "git clone %s %s 2>&1", GIT_REMOTE, GIT_PATH);
+    rc_file = popen(command, "r");
+    rc = fread(command_buf, sizeof command_buf, 1, rc_file);
+    rc = fclose(rc_file);
+
+    if (rc != 0) {
+        sys_error("git clone error", rc);
+    }
+
 
     listenfd = socket_INIT();
 
@@ -290,14 +408,17 @@ int main() {
 
 
     for (;;) {
-        rc = poll(fds, 2, -1);
+        rc = poll(fds, fdset, -1);
 
         if (rc < 0) {
             perror("select");
             exit(EXIT_FAILURE);
+        } else if (rc == 0) {
+            continue;
         }
 
-        if (fds[1].revents & POLLIN) {
+        if (fds[1].revents & POLLIN)
+        {
             // Output all events as "<timestamp> <path> <events>"
             struct inotify_event *event = inotifytools_next_event(-1);
             while (event) {
@@ -308,29 +429,41 @@ int main() {
                     case IN_CLOSE_NOWRITE:
                     case IN_CLOSE:
                     case IN_ATTRIB:
-                    case IN_CREATE:
                         break;
-                    case IN_CLOSE_WRITE:
+                    case IN_CREATE:
+                        handle_creat(event);
                     case IN_DELETE:
                     case IN_DELETE_SELF:
+                        handle_del(event);
+                        break;
                     case IN_MODIFY:
+//                    case IN_CLOSE_WRITE:
                         handle_diff(event);
                         break;
                 }
                 event = inotifytools_next_event(-1);
             }
-        } else {
-            /*n = get_line(listenfd, buf, sizeof(buf));
-            if (n > 0) {
-                printf("%s\n", buf);
-            }*/
+        } else if (fds[0].revents & POLLIN){
             clifd = accept(listenfd, NULL, NULL);
-            read(clifd, buf, sizeof(buf));
-            printf("%s\n", buf);
+            n = get_line(clifd, buf, sizeof(buf));
+            if (n < 0)
+                continue;
+            if (strcmp(buf, "GIT\n") != 0) {
+                continue;
+            }
+
+            n = get_line(clifd, buf, sizeof(buf));
+            if (n < 0)
+                continue;
+            buf[strlen(buf)-1] = '\0';
+
+            if (strcmp(buf, "flush") == 0) {
+//                git_fetch();
+            } else if (strcmp(buf, "monitor") == 0){
+            }
             close(clifd);
         }
     }
 
-    git_libgit2_shutdown();
     return 0;
 }
