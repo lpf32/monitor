@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include "monitor.h"
 #include <sys/stat.h>
-#include <signal.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <poll.h>
@@ -37,8 +36,18 @@ FILE *log;
 char command_buf[4096];
 FILE *rc_file;
 char command[4096];
-
 char sentry_buf[4096];
+static time_t ticks;
+
+struct {
+    char *name;
+    monitor_cb fn;
+} commands[] = {
+        {"creat_action", creat_action},
+        {"del_action", del_action},
+        {"diff_action", diff_action},
+        { NULL, NULL}
+};
 
 
 int socket_INIT()
@@ -171,14 +180,14 @@ int dir_exists(char *path) {
 
 }
 
-int handle_creat(struct inotify_event * event)
+int handle_action(struct inotify_event * event, char *action)
 {
     char *pathname = NULL;
     char *eventname = NULL;
     char filename[4096];
     char git_filename[4096];
-    char buf[1024];
     int rc;
+    int i;
 
     if (event->len > 0)
         eventname = event->name;
@@ -193,6 +202,17 @@ int handle_creat(struct inotify_event * event)
 
     snprintf(git_filename, sizeof(git_filename), "%s%s", GIT_PATH, filename + strlen(WEB_PATH));
 
+    for (i = 0; commands[i].name != NULL; ++i) {
+        if (!strcmp(action, commands[i].name)) {
+            rc = commands[i].fn(git_filename, filename, event);
+        }
+    }
+}
+
+int creat_action(char* git_filename, char * filename, struct inotify_event * event)
+{
+    int rc;
+    char buf[128];
 
     if (event->mask & IN_ISDIR)
     {
@@ -204,38 +224,27 @@ int handle_creat(struct inotify_event * event)
     if (rc == 0) {
         snprintf(command, sizeof command, "rm -rf %s 2>&1", filename);
 
+        bzero(command_buf, sizeof command_buf);
         rc_file = popen(command, "r");
         rc = fread(command_buf, sizeof command_buf, 1, rc_file);
         rc = fclose(rc_file);
 
         snprintf(buf, sizeof buf, "%s was created", filename);
-        send_sentry(buf, command_buf);
+//        send_sentry(buf, command_buf);
+        action_log(buf);
         if (rc != 0) {
             sys_error("git clone error", rc);
         }
     }
 }
 
-int handle_del(struct inotify_event * event) {
-    char *pathname = NULL;
-    char *eventname = NULL;
-    char filename[4096];
-    char git_filename[4096];
-    char buf[1024];
+
+int del_action(char* git_filename, char * filename, struct inotify_event * event)
+{
     int rc;
+    char buf[128];
 
-    if (event->len > 0)
-        eventname = event->name;
-
-    pathname = inotifytools_filename_from_wd(event->wd);
-
-    if (eventname != NULL)
-        snprintf(filename, sizeof(filename), "%s%s", pathname, eventname);
-    else
-        snprintf(filename, sizeof(filename), "%s", pathname);
-
-    snprintf(git_filename, sizeof(git_filename), "%s%s", GIT_PATH, filename + strlen(WEB_PATH));
-
+    bzero(command_buf, sizeof command_buf);
 
     if (event->mask & IN_ISDIR)
     {
@@ -253,39 +262,23 @@ int handle_del(struct inotify_event * event) {
         rc = fclose(rc_file);
 
         snprintf(buf, sizeof buf, "%s was deleted", filename);
-        send_sentry(buf, command_buf);
-        /*if (rc != 0) {
-            sys_error("git clone error", rc);
-        }*/
+//        send_sentry(buf, command_buf);
+        action_log(buf);
     }
 }
 
-int handle_diff(struct inotify_event * event)
+
+int diff_action(char* git_filename, char * filename, struct inotify_event * event)
 {
-    char * pathname = NULL;
-    char * eventname = NULL;
-    char filename[4096];
-    char git_filename[4096];
-
-    if (event->len > 0)
-        eventname = event->name;
-    else
-        return 0;
-
-    pathname = inotifytools_filename_from_wd( event->wd );
-
-    snprintf(filename, sizeof(filename), "%s%s", pathname, eventname);
-
-    snprintf(git_filename, sizeof(git_filename), "%s%s", GIT_PATH, filename+strlen(WEB_PATH));
-
-
-    printf("diff filename: %s\n", filename);
-    printf("git filename: %s\n", git_filename);
-
+    char buf[256];
+    bzero(command_buf, sizeof command_buf);
 
     snprintf(command, sizeof(command), "/home/zhang/CLionProjects/monitor/diff_command.sh %s %s", git_filename, filename);
     system(command);
 
+    snprintf(buf, sizeof buf, "%s was MODIFY", filename);
+
+    action_log(buf);
 
 }
 
@@ -334,25 +327,28 @@ void log_INIT()
 
 int sys_error(char *message, int errnum)
 {
-    static time_t ticks;
     ticks = time(NULL);
 
     snprintf(sentry_buf, sizeof sentry_buf, "[%.24s] %s: %s: %s\n", ctime(&ticks), message ,strerror(errnum), command_buf);
 
-//    snprintf(command, sizeof command, "%s/sentry_report.py %s", WORK_PATH, message);
-//    rc_file = popen(command, "w");
-//    fwrite(buf, sizeof buf, 1, rc_file);
-//    fclose(rc_file);
-
     send_sentry(message, sentry_buf);
 
-
-    fwrite(sentry_buf, strlen(sentry_buf), 1, log);
     exit(EXIT_FAILURE);
+}
+
+int action_log(char *message)
+{
+    static time_t ticks;
+    ticks = time(NULL);
+
+    snprintf(sentry_buf, sizeof sentry_buf, "[%.24s] %s: %s\n", ctime(&ticks), message, command_buf);
+
+    send_sentry(message, sentry_buf);
 }
 
 int send_sentry(char *message, char *content)
 {
+    fwrite(content, strlen(content), 1, log);
     snprintf(command, sizeof command, "%s/sentry_report.py %s", WORK_PATH, message);
     rc_file = popen(command, "w");
     fwrite(content, strlen(content), 1, rc_file);
@@ -453,11 +449,11 @@ int main() {
                     || event->mask & IN_ATTRIB)
                 {
                 } else if (event->mask & IN_CREATE) {
-                    handle_creat(event);
+                    handle_action(event, "creat_action");
                 } else if (event->mask & IN_DELETE || event->mask & IN_DELETE_SELF) {
-                    handle_del(event);
+                    handle_action(event, "del_action");
                 } else if (event->mask & IN_MODIFY) {
-                    handle_diff(event);
+                    handle_action(event, "diff_action");
                 }
                 event = inotifytools_next_event(-1);
             }

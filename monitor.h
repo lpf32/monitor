@@ -11,6 +11,8 @@
 #define LOG_PATH "/data/log/monitor/monitor.log"
 #define WORK_PATH "/home/zhang/CLionProjects/monitor"
 
+typedef int (*monitor_cb)(char* git_filename, char *filename, struct inotify_event *event);
+
 #define PORT 9000
 
 void init();
@@ -30,8 +32,14 @@ int socket_INIT();
 int get_line(int, char*, int);
 int sys_error(char *message, int errnum);
 int send_sentry(char *message, char *content);
+int action_log(char *message);
 
 void git_fetch(char *tag);
 int find_space(char *message, int size);
+
+int creat_action(char*, char *, struct inotify_event *);
+int del_action(char*, char *, struct inotify_event *);
+int diff_action(char*, char *, struct inotify_event *);
+
 
 #endif //MONITOR_MONITOR_H
