@@ -8,7 +8,6 @@
 #include <errno.h>
 #include <unistd.h>
 #include "monitor.h"
-#include "common.h"
 #include <sys/stat.h>
 #include <signal.h>
 #include <sys/socket.h>
@@ -16,6 +15,7 @@
 #include <poll.h>
 #include <fcntl.h>
 #include <time.h>
+#include <sys/time.h>
 #include <ctype.h>
 
 /*void abort_handler(int signum)
@@ -282,22 +282,10 @@ int handle_diff(struct inotify_event * event)
     printf("diff filename: %s\n", filename);
     printf("git filename: %s\n", git_filename);
 
-    char *argv[3];
-    argv[0] = malloc(100);
-    argv[1] = malloc(100);
-    argv[2] = malloc(100);
 
-    /*argv[1] = "/data/www/web/cipher.sql";
-    argv[2] = "/data/www/web1/cipher.sql";*/
-//    sleep(1);
-//    diff(3, argv);
-
-//    pid_t child;
-//    child = fork();
     snprintf(command, sizeof(command), "/home/zhang/CLionProjects/monitor/diff_command.sh %s %s", git_filename, filename);
     system(command);
 
-//    system("python /home/zhang/CLionProjects/monitor/sentry_report.py");
 
 }
 
@@ -337,6 +325,7 @@ void log_INIT()
 {
     log = fopen(LOG_PATH, "a");
     if (log == NULL) {
+        perror("fopen error");
         sys_error("fopen error", errno);
     }
 }
@@ -456,24 +445,7 @@ int main() {
             struct inotify_event *event = inotifytools_next_event(-1);
             while (event) {
                 inotifytools_printf(event, "%T %w%f %e\n");
-                /*switch (event->mask) { //TODO 要用　＆　判断　ｅｖｅｎｔ
-                    case IN_ACCESS:
-                    case IN_OPEN:
-                    case IN_CLOSE_NOWRITE:
-                    case IN_CLOSE:
-                    case IN_ATTRIB:
-                        break;
-                    case IN_CREATE:
-                        handle_creat(event);
-                    case IN_DELETE:
-                    case IN_DELETE_SELF:
-                        handle_del(event);
-                        break;
-                    case IN_MODIFY:
-//                    case IN_CLOSE_WRITE:
-                        handle_diff(event);
-                        break;
-                }*/
+
                 if (event->mask & IN_ACCESS
                     || event->mask & IN_OPEN
                     || event->mask & IN_CLOSE_NOWRITE
@@ -523,7 +495,7 @@ int main() {
 
                 git_fetch(buf+rc+1);
 
-                //TODO 暂停　ｍｏｎｉｔｏｒ　ｗｅｂl
+                //暂停　ｍｏｎｉｔｏｒ　ｗｅｂl
                 fdsize = 1;
             } else if (strcmp(buf, "monitor") == 0){
                 fdsize = 2;
