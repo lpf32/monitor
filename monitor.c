@@ -16,6 +16,7 @@
 #include <poll.h>
 #include <fcntl.h>
 #include <time.h>
+#include <ctype.h>
 
 /*void abort_handler(int signum)
 {
@@ -181,12 +182,14 @@ int handle_creat(struct inotify_event * event)
 
     if (event->len > 0)
         eventname = event->name;
-    else
-        return 0;
+
 
     pathname = inotifytools_filename_from_wd(event->wd);
 
-    snprintf(filename, sizeof(filename), "%s%s", pathname, eventname);
+    if (eventname != NULL)
+        snprintf(filename, sizeof(filename), "%s%s", pathname, eventname);
+    else
+        snprintf(filename, sizeof(filename), "%s", pathname);
 
     snprintf(git_filename, sizeof(git_filename), "%s%s", GIT_PATH, filename + strlen(WEB_PATH));
 
@@ -223,12 +226,13 @@ int handle_del(struct inotify_event * event) {
 
     if (event->len > 0)
         eventname = event->name;
-    else
-        return 0;
 
     pathname = inotifytools_filename_from_wd(event->wd);
 
-    snprintf(filename, sizeof(filename), "%s%s", pathname, eventname);
+    if (eventname != NULL)
+        snprintf(filename, sizeof(filename), "%s%s", pathname, eventname);
+    else
+        snprintf(filename, sizeof(filename), "%s", pathname);
 
     snprintf(git_filename, sizeof(git_filename), "%s%s", GIT_PATH, filename + strlen(WEB_PATH));
 
@@ -250,9 +254,9 @@ int handle_del(struct inotify_event * event) {
 
         snprintf(buf, sizeof buf, "%s was deleted", filename);
         send_sentry(buf, command_buf);
-        if (rc != 0) {
+        /*if (rc != 0) {
             sys_error("git clone error", rc);
-        }
+        }*/
     }
 }
 
@@ -366,6 +370,35 @@ int send_sentry(char *message, char *content)
     fclose(rc_file);
 }
 
+void git_fetch(char *tag)
+{
+    int rc;
+
+    snprintf(command, sizeof command, "cd %s && git checkout master && git pull && git checkout %s 2>&1",
+             GIT_PATH, tag);
+    rc_file = popen(command, "r");
+    rc = fread(command_buf, sizeof command_buf, 1, rc_file);
+    rc = fclose(rc_file);
+
+    if (rc != 0) {
+        sys_error("git clone error", rc);
+    }
+}
+
+int find_space(char *message, int size)
+{
+    int i;
+    for (i = 0; i < size; i++)
+    {
+        if (isspace(*(message+i)))
+        {
+            return i;
+        }
+    }
+
+    return i;
+}
+
 int main() {
     // initialize and watch the entire directory tree from the current working
     // directory downwards for all events
@@ -376,7 +409,7 @@ int main() {
     char buf[4096];
     int rc;
     int n;
-    nfds_t fdset = 2;
+    nfds_t fdsize = 2;
 
     init();
     rc = dir_exists(GIT_PATH);
@@ -408,7 +441,7 @@ int main() {
 
 
     for (;;) {
-        rc = poll(fds, fdset, -1);
+        rc = poll(fds, fdsize, -1);
 
         if (rc < 0) {
             perror("select");
@@ -423,7 +456,7 @@ int main() {
             struct inotify_event *event = inotifytools_next_event(-1);
             while (event) {
                 inotifytools_printf(event, "%T %w%f %e\n");
-                switch (event->mask) {
+                /*switch (event->mask) { //TODO 要用　＆　判断　ｅｖｅｎｔ
                     case IN_ACCESS:
                     case IN_OPEN:
                     case IN_CLOSE_NOWRITE:
@@ -440,6 +473,19 @@ int main() {
 //                    case IN_CLOSE_WRITE:
                         handle_diff(event);
                         break;
+                }*/
+                if (event->mask & IN_ACCESS
+                    || event->mask & IN_OPEN
+                    || event->mask & IN_CLOSE_NOWRITE
+                    || event->mask & IN_CLOSE
+                    || event->mask & IN_ATTRIB)
+                {
+                } else if (event->mask & IN_CREATE) {
+                    handle_creat(event);
+                } else if (event->mask & IN_DELETE || event->mask & IN_DELETE_SELF) {
+                    handle_del(event);
+                } else if (event->mask & IN_MODIFY) {
+                    handle_diff(event);
                 }
                 event = inotifytools_next_event(-1);
             }
@@ -448,18 +494,39 @@ int main() {
             n = get_line(clifd, buf, sizeof(buf));
             if (n < 0)
                 continue;
-            if (strcmp(buf, "GIT\n") != 0) {
+
+            buf[n-1] = '\0';
+            if (strcmp(buf, "GIT") != 0) {
                 continue;
             }
 
             n = get_line(clifd, buf, sizeof(buf));
             if (n < 0)
                 continue;
-            buf[strlen(buf)-1] = '\0';
+            buf[n-1] = '\0';
+
 
             if (strcmp(buf, "flush") == 0) {
-//                git_fetch();
+
+                n = get_line(clifd, buf, sizeof(buf));
+                buf[n-1] = '\0';
+
+                rc = find_space(buf, n); // rc 为　index
+
+                if (rc == n) {
+                    memcpy(command_buf, buf, strlen(buf));
+                    command_buf[strlen(buf)] = '\0';
+                    sys_error("socket message format error", 234234);
+                }
+
+                buf[rc] = '\0';
+
+                git_fetch(buf+rc+1);
+
+                //TODO 暂停　ｍｏｎｉｔｏｒ　ｗｅｂl
+                fdsize = 1;
             } else if (strcmp(buf, "monitor") == 0){
+                fdsize = 2;
             }
             close(clifd);
         }

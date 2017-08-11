@@ -31,4 +31,7 @@ int get_line(int, char*, int);
 int sys_error(char *message, int errnum);
 int send_sentry(char *message, char *content);
 
+void git_fetch(char *tag);
+int find_space(char *message, int size);
+
 #endif //MONITOR_MONITOR_H
