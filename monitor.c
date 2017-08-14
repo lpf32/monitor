@@ -16,21 +16,16 @@
 #include <time.h>
 #include <sys/time.h>
 #include <ctype.h>
+#include <signal.h>
+#include <syslog.h>
+#include <pwd.h>
 
-/*void abort_handler(int signum)
-{
+/* Change this to whatever your daemon is called */
+#define DAEMON_NAME "monitor"
 
-}
+/* Change this to the user under which to run */
+#define RUN_AS_USER "daemon"
 
-void signal_handler()
-{
-    struct sigaction new_action;
-    new_action.sa_handler = abort_handler;
-//    sigemptyset(&new_action.sa_mask);
-
-//    sigaction(SIGABRT, &new_action, NULL);
-    signal(SIGABRT, SIG_IGN);
-}*/
 
 FILE *log;
 char command_buf[4096];
@@ -49,6 +44,14 @@ struct {
         { NULL, NULL}
 };
 
+static void child_handler(int signum)
+{
+    switch(signum) {
+        case SIGALRM: exit(EXIT_FAILURE); break;
+        case SIGUSR1: exit(EXIT_SUCCESS); break;
+        case SIGCHLD: exit(EXIT_FAILURE); break;
+    }
+}
 
 int socket_INIT()
 {
@@ -58,7 +61,7 @@ int socket_INIT()
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &yes, sizeof(yes));
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 
     bzero(&servaddr, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
@@ -66,12 +69,12 @@ int socket_INIT()
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     if (bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
-        perror("bind");
+        sys_error("bind error", errno);
         exit(EXIT_FAILURE);
     }
 
     if (listen(sockfd, 10) < 0) {
-        perror("listen");
+        sys_error("listen error", errno);
         exit(EXIT_FAILURE);
     }
 
@@ -80,8 +83,10 @@ int socket_INIT()
 
 void init()
 {
-    inotify_INIT();
     log_INIT();
+    skeleton_daemon("/data/" DAEMON_NAME);
+    inotify_INIT();
+
 }
 
 
@@ -89,7 +94,7 @@ void inotify_INIT()
 {
     if ( !inotifytools_initialize()
          || !inotifytools_watch_recursively(WEB_PATH, IN_ALL_EVENTS ) ) {
-        fprintf(stderr, "%s\n", strerror( inotifytools_error() ) );
+        syslog( LOG_ERR, "%s\n", strerror( inotifytools_error() ));
         exit(EXIT_FAILURE);
     }
 }
@@ -205,6 +210,7 @@ int handle_action(struct inotify_event * event, char *action)
     for (i = 0; commands[i].name != NULL; ++i) {
         if (!strcmp(action, commands[i].name)) {
             rc = commands[i].fn(git_filename, filename, event);
+            syslog(LOG_NOTICE, "%s status: %d", action, rc);
         }
     }
 }
@@ -232,10 +238,11 @@ int creat_action(char* git_filename, char * filename, struct inotify_event * eve
         snprintf(buf, sizeof buf, "%s was created", filename);
 //        send_sentry(buf, command_buf);
         action_log(buf);
-        if (rc != 0) {
-            sys_error("git clone error", rc);
-        }
+//        if (rc != 0) {
+//            sys_error("git clone error", rc);
+//        }
     }
+    return rc;
 }
 
 
@@ -264,21 +271,26 @@ int del_action(char* git_filename, char * filename, struct inotify_event * event
         snprintf(buf, sizeof buf, "%s was deleted", filename);
 //        send_sentry(buf, command_buf);
         action_log(buf);
+
     }
+
+    return rc;
 }
 
 
 int diff_action(char* git_filename, char * filename, struct inotify_event * event)
 {
     char buf[256];
+    int rc;
+
     bzero(command_buf, sizeof command_buf);
+    snprintf(buf, sizeof buf, "%s was MODIFY", filename);
+    action_log(buf);
 
     snprintf(command, sizeof(command), "/home/zhang/CLionProjects/monitor/diff_command.sh %s %s", git_filename, filename);
-    system(command);
-
-    snprintf(buf, sizeof buf, "%s was MODIFY", filename);
-
-    action_log(buf);
+    rc = system(command);
+    return rc;
+//    syslog(LOG_NOTICE, "diff rc %d", rc);
 
 }
 
@@ -316,11 +328,13 @@ int get_line(int sock,char *buf, int size)
 
 void log_INIT()
 {
-    log = fopen(LOG_PATH, "a");
-    if (log == NULL) {
-        perror("fopen error");
-        sys_error("fopen error", errno);
-    }
+//    log = fopen(LOG_PATH, "a");
+//    if (log == NULL) {
+//        perror("fopen error");
+//        sys_error("fopen error", errno);
+//    }
+    openlog( DAEMON_NAME, LOG_PID, LOG_LOCAL5 );
+    syslog( LOG_INFO, "starting" );
 }
 
 
@@ -329,10 +343,10 @@ int sys_error(char *message, int errnum)
 {
     ticks = time(NULL);
 
-    snprintf(sentry_buf, sizeof sentry_buf, "[%.24s] %s: %s: %s\n", ctime(&ticks), message ,strerror(errnum), command_buf);
+//    snprintf(sentry_buf, sizeof sentry_buf, "[%.24s] %s: %s: %s\n", ctime(&ticks), message ,strerror(errnum), command_buf);
 
     send_sentry(message, sentry_buf);
-
+    syslog(LOG_ERR, "[%.24s] %s: %s: %s", ctime(&ticks), message ,strerror(errnum), command_buf);
     exit(EXIT_FAILURE);
 }
 
@@ -341,21 +355,21 @@ int action_log(char *message)
     static time_t ticks;
     ticks = time(NULL);
 
-    snprintf(sentry_buf, sizeof sentry_buf, "[%.24s] %s: %s\n", ctime(&ticks), message, command_buf);
+//    snprintf(sentry_buf, sizeof sentry_buf, "[%.24s] %s: %s\n", ctime(&ticks), message, command_buf);
 
+    syslog(LOG_ERR, "[%.24s] %s: %s", ctime(&ticks), message, command_buf);
     send_sentry(message, sentry_buf);
 }
 
 int send_sentry(char *message, char *content)
 {
-    fwrite(content, strlen(content), 1, log);
     snprintf(command, sizeof command, "%s/sentry_report.py %s", WORK_PATH, message);
     rc_file = popen(command, "w");
     fwrite(content, strlen(content), 1, rc_file);
     fclose(rc_file);
 }
 
-void git_fetch(char *tag)
+int git_fetch(char *tag)
 {
     int rc;
 
@@ -366,8 +380,11 @@ void git_fetch(char *tag)
     rc = fclose(rc_file);
 
     if (rc != 0) {
-        sys_error("git clone error", rc);
+//        sys_error("git clone error", rc);
+        action_log("git clone error");
+        return 1;
     }
+    return 0;
 }
 
 int find_space(char *message, int size)
@@ -384,6 +401,95 @@ int find_space(char *message, int size)
     return i;
 }
 
+static void skeleton_daemon(const char *lockfile)
+{
+    pid_t pid, sid, parent;
+    int lfp = -1;
+
+    /* already a daemon */
+    if ( getppid() == 1 ) return;
+
+    /* Create the lock file as the current user */
+    if ( lockfile && lockfile[0] ) {
+        lfp = open(lockfile,O_RDWR|O_CREAT,0640);
+        if ( lfp < 0 ) {
+            syslog( LOG_ERR, "unable to create lock file %s, code=%d (%s)",
+                    lockfile, errno, strerror(errno) );
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    /* Drop user if there is one, and we were run as root */
+//    if ( getuid() == 0 || geteuid() == 0 ) {
+//        struct passwd *pw = getpwnam(RUN_AS_USER);
+//        if ( pw ) {
+//            syslog( LOG_NOTICE, "setting user to " RUN_AS_USER );
+//            setuid( pw->pw_uid );
+//        }
+//    }
+
+    /* Trap signals that we expect to recieve */
+    signal(SIGCHLD,child_handler);
+    signal(SIGUSR1,child_handler);
+    signal(SIGALRM,child_handler);
+
+    /* Fork off the parent process */
+    pid = fork();
+    if (pid < 0) {
+        syslog( LOG_ERR, "unable to fork daemon, code=%d (%s)",
+                errno, strerror(errno) );
+        exit(EXIT_FAILURE);
+    }
+    /* If we got a good PID, then we can exit the parent process. */
+    if (pid > 0) {
+
+        /* Wait for confirmation from the child via SIGTERM or SIGCHLD, or
+           for two seconds to elapse (SIGALRM).  pause() should not return. */
+        alarm(2);
+        pause();
+
+        exit(EXIT_FAILURE);
+    }
+
+    /* At this point we are executing as the child process */
+    parent = getppid();
+
+    /* Cancel certain signals */
+    signal(SIGCHLD,SIG_DFL); /* A child process dies */
+    signal(SIGTSTP,SIG_IGN); /* Various TTY signals */
+    signal(SIGTTOU,SIG_IGN);
+    signal(SIGTTIN,SIG_IGN);
+    signal(SIGHUP, SIG_IGN); /* Ignore hangup signal */
+    signal(SIGTERM,SIG_DFL); /* Die on SIGTERM */
+
+    /* Change the file mode mask */
+    umask(0);
+
+    /* Create a new SID for the child process */
+    sid = setsid();
+    if (sid < 0) {
+        syslog( LOG_ERR, "unable to create a new session, code %d (%s)",
+                errno, strerror(errno) );
+        exit(EXIT_FAILURE);
+    }
+
+    /* Change the current working directory.  This prevents the current
+       directory from being locked; hence not being able to remove it. */
+    if ((chdir("/")) < 0) {
+        syslog( LOG_ERR, "unable to change directory to %s, code %d (%s)",
+                "/", errno, strerror(errno) );
+        exit(EXIT_FAILURE);
+    }
+
+    /* Redirect standard files to /dev/null */
+    freopen( "/dev/null", "r", stdin);
+    freopen( "/dev/null", "w", stdout);
+    freopen( "/dev/null", "w", stderr);
+
+    /* Tell the parent process that we are A-okay */
+    kill( parent, SIGUSR1 );
+}
+
 int main() {
     // initialize and watch the entire directory tree from the current working
     // directory downwards for all events
@@ -397,26 +503,25 @@ int main() {
     nfds_t fdsize = 2;
 
     init();
+    listenfd = socket_INIT();
+
     rc = dir_exists(GIT_PATH);
     if (rc == 1)
     {
         rc = remove_directory(GIT_PATH);
         if (rc < 0) {
-            sys_error("git clone error", rc);
+            sys_error("git clone error", errno);
         }
     }
 
     snprintf(command, sizeof command, "git clone %s %s 2>&1", GIT_REMOTE, GIT_PATH);
     rc_file = popen(command, "r");
     rc = fread(command_buf, sizeof command_buf, 1, rc_file);
-    rc = fclose(rc_file);
-
+    rc = pclose(rc_file);
+//    syslog(LOG_NOTICE, "rc %d", rc);
     if (rc != 0) {
-        sys_error("git clone error", rc);
+        sys_error("system", errno);
     }
-
-
-    listenfd = socket_INIT();
 
     fds[0].fd = listenfd;
     fds[0].events = POLLRDNORM | POLLIN;
@@ -489,12 +594,25 @@ int main() {
 
                 buf[rc] = '\0';
 
-                git_fetch(buf+rc+1);
+                rc = git_fetch(buf+rc+1);
 
                 //暂停　ｍｏｎｉｔｏｒ　ｗｅｂl
-                fdsize = 1;
-            } else if (strcmp(buf, "monitor") == 0){
+                if (rc == 0)
+                {
+                    fdsize = 1;
+                    write(clifd, "OK", 2);
+                }
+                else
+                {
+                    write(clifd, "ERROR", 2);
+                }
+
+
+            }
+            else if (strcmp(buf, "monitor") == 0)
+            {
                 fdsize = 2;
+                write(clifd, "OK", 2);
             }
             close(clifd);
         }

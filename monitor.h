@@ -34,12 +34,15 @@ int sys_error(char *message, int errnum);
 int send_sentry(char *message, char *content);
 int action_log(char *message);
 
-void git_fetch(char *tag);
+int git_fetch(char *tag);
 int find_space(char *message, int size);
 
 int creat_action(char*, char *, struct inotify_event *);
 int del_action(char*, char *, struct inotify_event *);
 int diff_action(char*, char *, struct inotify_event *);
+
+
+static void skeleton_daemon(const char *lockfile);
 
 
 #endif //MONITOR_MONITOR_H
