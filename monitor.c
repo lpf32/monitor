@@ -34,6 +34,10 @@ char command[4096];
 char sentry_buf[4096];
 static time_t ticks;
 
+char GIT_REMOTE[1024];
+char GIT_PATH[1024];
+char WEB_PATH[1024];
+
 struct {
     char *name;
     monitor_cb fn;
@@ -83,6 +87,7 @@ int socket_INIT()
 
 void init()
 {
+    parse_config("/etc/monitor/conf.cfg");
     log_INIT();
     skeleton_daemon("/data/" DAEMON_NAME);
     inotify_INIT();
@@ -217,7 +222,7 @@ int handle_action(struct inotify_event * event, char *action)
 
 int creat_action(char* git_filename, char * filename, struct inotify_event * event)
 {
-    int rc;
+    int rc = 0, rst = 0;
     char buf[128];
 
     if (event->mask & IN_ISDIR)
@@ -232,8 +237,8 @@ int creat_action(char* git_filename, char * filename, struct inotify_event * eve
 
         bzero(command_buf, sizeof command_buf);
         rc_file = popen(command, "r");
-        rc = fread(command_buf, sizeof command_buf, 1, rc_file);
-        rc = fclose(rc_file);
+        rst = fread(command_buf, sizeof command_buf, 1, rc_file);
+        rst = fclose(rc_file);
 
         snprintf(buf, sizeof buf, "%s was created", filename);
 //        send_sentry(buf, command_buf);
@@ -242,13 +247,13 @@ int creat_action(char* git_filename, char * filename, struct inotify_event * eve
 //            sys_error("git clone error", rc);
 //        }
     }
-    return rc;
+    return rst;
 }
 
 
 int del_action(char* git_filename, char * filename, struct inotify_event * event)
 {
-    int rc;
+    int rc = 0, rst = 0;
     char buf[128];
 
     bzero(command_buf, sizeof command_buf);
@@ -265,8 +270,8 @@ int del_action(char* git_filename, char * filename, struct inotify_event * event
         snprintf(command, sizeof command, "cp -rf %s %s 2>&1", git_filename, filename);
 
         rc_file = popen(command, "r");
-        rc = fread(command_buf, sizeof command_buf, 1, rc_file);
-        rc = fclose(rc_file);
+        rst = fread(command_buf, sizeof command_buf, 1, rc_file);
+        rst = fclose(rc_file);
 
         snprintf(buf, sizeof buf, "%s was deleted", filename);
 //        send_sentry(buf, command_buf);
@@ -274,24 +279,69 @@ int del_action(char* git_filename, char * filename, struct inotify_event * event
 
     }
 
-    return rc;
+    return rst;
 }
 
 
 int diff_action(char* git_filename, char * filename, struct inotify_event * event)
 {
     char buf[256];
-    int rc;
+    int rc = 0;
 
     bzero(command_buf, sizeof command_buf);
     snprintf(buf, sizeof buf, "%s was MODIFY", filename);
     action_log(buf);
 
-    snprintf(command, sizeof(command), "/home/zhang/CLionProjects/monitor/diff_command.sh %s %s", git_filename, filename);
+    snprintf(command, sizeof(command), "diff_command.sh %s %s", git_filename, filename);
     rc = system(command);
     return rc;
 //    syslog(LOG_NOTICE, "diff rc %d", rc);
 
+}
+
+static int find_sep(const char *message, int size, char sep)
+{
+    int i;
+    for (i = 0; i < size; i++)
+    {
+        if (*(message+i) == sep)
+        {
+            return i;
+        }
+    }
+
+    return i;
+}
+
+static int parse_config(char *filename) {
+    FILE *f;
+    char buf[1024];
+    char *pos = NULL;
+    if ((f = fopen(filename, "r")) == NULL) {
+        perror("fopen error");
+    }
+    while (fgets(buf, sizeof buf, f) != NULL)
+    {
+
+        if ((pos = strchr(buf, '\n')) != NULL)
+            *pos = '\0';
+        pos = strchr(buf, '=');
+        *pos = '\0';
+        pos++;
+        if (strcmp(buf, "GIT_REMOTE") == 0) {
+            memcpy(GIT_REMOTE, pos, strlen(pos));
+            printf("GIT_REMOTE: %s\n", GIT_REMOTE);
+        } else if (strcmp(buf, "GIT_PATH") == 0) {
+            memcpy(GIT_PATH, pos, strlen(pos));
+            printf("GIT_PATH: %s\n", GIT_PATH);
+        } else if (strcmp(buf, "WEB_PATH") == 0) {
+            memcpy(WEB_PATH, pos, strlen(pos));
+            printf("WEB_PATH: %s\n", WEB_PATH);
+        }
+    }
+
+//    exit(0);
+    return 0;
 }
 
 int get_line(int sock,char *buf, int size)
@@ -363,7 +413,7 @@ int action_log(char *message)
 
 int send_sentry(char *message, char *content)
 {
-    snprintf(command, sizeof command, "%s/sentry_report.py %s", WORK_PATH, message);
+    snprintf(command, sizeof command, "sentry_report.py %s", message);
     rc_file = popen(command, "w");
     fwrite(content, strlen(content), 1, rc_file);
     fclose(rc_file);

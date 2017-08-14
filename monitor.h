@@ -4,12 +4,10 @@
 //#include "common.h"
 #include <stdio.h>
 
-#define GIT_REMOTE "git@git.kuainiujinke.com:zhangpanpan/test_.git"
-#define GIT_PATH "/data/www/web"
-#define WEB_PATH "/data/www/web1"
+//#define GIT_REMOTE "git@git.kuainiujinke.com:zhangpanpan/test_.git"
+//#define GIT_PATH "/data/www/web"
+//#define WEB_PATH "/data/www/web1"
 
-#define LOG_PATH "/data/log/monitor/monitor.log"
-#define WORK_PATH "/home/zhang/CLionProjects/monitor"
 
 typedef int (*monitor_cb)(char* git_filename, char *filename, struct inotify_event *event);
 
@@ -43,6 +41,10 @@ int diff_action(char*, char *, struct inotify_event *);
 
 
 static void skeleton_daemon(const char *lockfile);
+
+static int parse_config(char *filename);
+
+static int find_sep(const char *message, int size, char sep);
 
 
 #endif //MONITOR_MONITOR_H
