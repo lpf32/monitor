@@ -181,9 +181,7 @@ int dir_exists(char *path) {
     }
     else if (errno != ENOENT)
     {
-        perror("opendir");
-        exit(EXIT_FAILURE);
-
+        return -1;
     }
 
     return 0;
@@ -224,15 +222,18 @@ int creat_action(char* git_filename, char * filename, struct inotify_event * eve
 {
     int rc = 0, rst = 0;
     char buf[128];
+    int mode_diff = 0;
 
-    if (event->mask & IN_ISDIR)
-    {
-        rc = dir_exists(git_filename);
-    } else {
-        rc = access( git_filename, F_OK ) != -1? 1: 0;
+    struct stat path_stat;
+
+    rc = stat(git_filename, &path_stat);
+
+    if (!rc) {
+        rc = access(git_filename, F_OK) != -1 ? 1 : 0;
+        mode_diff = S_ISDIR(path_stat.st_mode) ^ !!(event->mask & IN_ISDIR);
     }
 
-    if (rc == 0) {
+    if (rc < 0 || !rc || mode_diff) {
         snprintf(command, sizeof command, "rm -rf %s 2>&1", filename);
 
         bzero(command_buf, sizeof command_buf);
@@ -258,12 +259,8 @@ int del_action(char* git_filename, char * filename, struct inotify_event * event
 
     bzero(command_buf, sizeof command_buf);
 
-    if (event->mask & IN_ISDIR)
-    {
-        rc = dir_exists(git_filename);
-    } else {
-        rc = access( git_filename, F_OK ) != -1? 1: 0;
-    }
+
+    rc = access( git_filename, F_OK ) != -1? 1: 0;
 
     if (rc == 1) {
 
@@ -650,11 +647,11 @@ int main() {
                 if (rc == 0)
                 {
                     fdsize = 1;
-                    write(clifd, "OK", 2);
+                    write(clifd, "OK\r\n", 2);
                 }
                 else
                 {
-                    write(clifd, "ERROR", 2);
+                    write(clifd, "ERROR\r\n", 2);
                 }
 
 
@@ -662,7 +659,7 @@ int main() {
             else if (strcmp(buf, "monitor") == 0)
             {
                 fdsize = 2;
-                write(clifd, "OK", 2);
+                write(clifd, "OK\r\n", 2);
             }
             close(clifd);
         }
