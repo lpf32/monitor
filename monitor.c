@@ -510,7 +510,7 @@ static void skeleton_daemon(const char *lockfile)
     signal(SIGTERM,SIG_DFL); /* Die on SIGTERM */
 
     /* Change the file mode mask */
-    umask(0);
+    umask(002);
 
     /* Create a new SID for the child process */
     sid = setsid();
