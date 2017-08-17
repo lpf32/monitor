@@ -99,7 +99,7 @@ void inotify_INIT()
 {
     if ( !inotifytools_initialize()
          || !inotifytools_watch_recursively(WEB_PATH, IN_ALL_EVENTS ) ) {
-        syslog( LOG_ERR, "%s\n", strerror( inotifytools_error() ));
+        syslog( LOG_ERR, "inotify_error: %s\n", strerror( inotifytools_error() ));
         exit(EXIT_FAILURE);
     }
 }
@@ -390,10 +390,10 @@ int sys_error(char *message, int errnum)
 {
     ticks = time(NULL);
 
-//    snprintf(sentry_buf, sizeof sentry_buf, "[%.24s] %s: %s: %s\n", ctime(&ticks), message ,strerror(errnum), command_buf);
+    snprintf(sentry_buf, sizeof sentry_buf, "[%.24s] %s: %s: %s\n", ctime(&ticks), message ,strerror(errnum), command_buf);
 
     send_sentry(message, sentry_buf);
-    syslog(LOG_ERR, "[%.24s] %s: %s: %s", ctime(&ticks), message ,strerror(errnum), command_buf);
+    syslog(LOG_ERR, sentry_buf);
     exit(EXIT_FAILURE);
 }
 
@@ -402,10 +402,10 @@ int action_log(char *message)
     static time_t ticks;
     ticks = time(NULL);
 
-//    snprintf(sentry_buf, sizeof sentry_buf, "[%.24s] %s: %s\n", ctime(&ticks), message, command_buf);
+    snprintf(sentry_buf, sizeof sentry_buf, "[%.24s] %s: %s\n", ctime(&ticks), message, command_buf);
 
-    syslog(LOG_ERR, "[%.24s] %s: %s", ctime(&ticks), message, command_buf);
     send_sentry(message, sentry_buf);
+    syslog(LOG_ERR, sentry_buf);
 }
 
 int send_sentry(char *message, char *content)
@@ -460,7 +460,7 @@ static void skeleton_daemon(const char *lockfile)
     if ( lockfile && lockfile[0] ) {
         lfp = open(lockfile,O_RDWR|O_CREAT,0640);
         if ( lfp < 0 ) {
-            syslog( LOG_ERR, "unable to create lock file %s, code=%d (%s)",
+            fprintf( stderr, "unable to create lock file %s, code=%d (%s)",
                     lockfile, errno, strerror(errno) );
             exit(EXIT_FAILURE);
         }
@@ -567,7 +567,7 @@ int main() {
     rc = pclose(rc_file);
 //    syslog(LOG_NOTICE, "rc %d", rc);
     if (rc != 0) {
-        sys_error("system", errno);
+        sys_error("git clone error", errno);
     }
 
     fds[0].fd = listenfd;
@@ -659,6 +659,10 @@ int main() {
             else if (strcmp(buf, "monitor") == 0)
             {
                 fdsize = 2;
+                inotify_INIT();
+                fds[1].fd = inotify_fd;
+                fds[1].events = POLLRDNORM | POLLIN;
+
                 write(clifd, "OK\r\n", 2);
             }
             close(clifd);
