@@ -309,11 +309,11 @@ int diff_action(char* git_filename, char * filename, struct inotify_event * even
     int rc = 0;
 
     bzero(command_buf, sizeof command_buf);
-    snprintf(buf, sizeof buf, "%s was MODIFY", filename);
-    action_log(buf);
-
     snprintf(command, sizeof(command), "diff_command.sh %s %s", git_filename, filename);
     rc = system(command);
+
+    snprintf(buf, sizeof buf, "%s was MODIFY", filename);
+    action_log(buf);
     return rc;
 //    syslog(LOG_NOTICE, "diff rc %d", rc);
 
@@ -664,10 +664,10 @@ int main() {
     }
 
     fds[0].fd = listenfd;
-    fds[0].events = POLLRDNORM | POLLIN;
+    fds[0].events = POLLIN;
 
     fds[1].fd = inotify_fd;
-    fds[1].events = POLLRDNORM | POLLIN;
+    fds[1].events = POLLIN;
 
 
     for (;;) {
@@ -754,7 +754,7 @@ int main() {
                 fdsize = 2;
                 inotify_INIT();
                 fds[1].fd = inotify_fd;
-                fds[1].events = POLLRDNORM | POLLIN;
+                fds[1].events = POLLIN;
 
                 write(clifd, "OK\r\n", 2);
             }

@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 2.7)
 project(monitor)
 
-set(CMAKE_C_STANDARD 99)
+#set(CMAKE_C_STANDARD 99)
 
 include_directories(${PROJECT_SOURCE_DIR})
+set(set CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")
 
 include_directories(libinotifytools/src)
 add_subdirectory(libinotifytools/src)
