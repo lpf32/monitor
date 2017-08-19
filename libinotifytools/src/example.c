@@ -12,7 +12,9 @@ int main() {
 	// initialize and watch the entire directory tree from the current working
 	// directory downwards for all events
 	if ( !inotifytools_initialize()
-		 || !inotifytools_watch_recursively( "/tmp/tmpintf", IN_ALL_EVENTS ) ) {
+		 || !inotifytools_watch_recursively( "/data/www/web1", IN_ALL_EVENTS )
+		 || !inotifytools_watch_recursively( "/data/www/test_", IN_ALL_EVENTS )
+			) {
 		fprintf(stderr, "%s\n", strerror( inotifytools_error() ) );
 		return -1;
 	}
@@ -24,14 +26,15 @@ int main() {
 	int rc;
 	FD_ZERO(&read_fds);
 	FD_SET(inotify_fd, &read_fds);
+	while (1) {
+		rc = select(inotify_fd + 1, &read_fds, NULL, NULL, NULL);
 
-	rc = select(inotify_fd + 1, &read_fds, NULL, NULL, NULL);
-
-	// Output all events as "<timestamp> <path> <events>"
-	struct inotify_event * event = inotifytools_next_event( -1 );
-	while ( event ) {
-		inotifytools_printf( event, "%T %w%f %e\n" );
-		event = inotifytools_next_event( -1 );
+		// Output all events as "<timestamp> <path> <events>"
+		struct inotify_event *event = inotifytools_next_event(-1);
+		while (event) {
+			inotifytools_printf(event, "%T %w%f %e\n");
+			event = inotifytools_next_event(-1);
+		}
 	}
 }
 

@@ -11,7 +11,7 @@
 
 typedef int (*monitor_cb)(char* git_filename, char *filename, struct inotify_event *event);
 
-#define PORT 9000
+#define PORT 9090
 
 void init();
 void diff_INIT();
@@ -46,5 +46,5 @@ static int parse_config(char *filename);
 
 static int find_sep(const char *message, int size, char sep);
 
-
+char *trimwhitespace(char *str);
 #endif //MONITOR_MONITOR_H

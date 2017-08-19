@@ -48,6 +48,15 @@ struct {
         { NULL, NULL}
 };
 
+struct {
+    char name[1024];
+    char git_remote[1024];
+    char git_path[1024];
+    char web_path[1024];
+}Entry[24];
+
+static int entry_index = -1;
+
 static void child_handler(int signum)
 {
     switch(signum) {
@@ -89,7 +98,7 @@ void init()
 {
     parse_config("/etc/monitor/conf.cfg");
     log_INIT();
-    skeleton_daemon("/data/" DAEMON_NAME);
+//    skeleton_daemon("/data/" DAEMON_NAME);
     inotify_INIT();
 
 }
@@ -97,10 +106,18 @@ void init()
 
 void inotify_INIT()
 {
-    if ( !inotifytools_initialize()
-         || !inotifytools_watch_recursively(WEB_PATH, IN_ALL_EVENTS ) ) {
-        syslog( LOG_ERR, "inotify_error: %s\n", strerror( inotifytools_error() ));
+    if (!inotifytools_initialize())
+    {
+        syslog(LOG_ERR, "inotify_error: %s\n", strerror(inotifytools_error()));
         exit(EXIT_FAILURE);
+    }
+    for (int i = 0; i <= entry_index; i++)
+    {
+        if (!inotifytools_watch_recursively(Entry[i].web_path, IN_ALL_EVENTS))
+        {
+            syslog(LOG_ERR, "inotify_error: %s %s\n", strerror(inotifytools_error()), Entry[i].web_path);
+            exit(EXIT_FAILURE);
+        }
     }
 }
 
@@ -208,7 +225,13 @@ int handle_action(struct inotify_event * event, char *action)
     else
         snprintf(filename, sizeof(filename), "%s", pathname);
 
-    snprintf(git_filename, sizeof(git_filename), "%s%s", GIT_PATH, filename + strlen(WEB_PATH));
+    for (i = 0; i <= entry_index; i++)
+    {
+        if (strcmp(Entry[i].web_path, pathname) == 0)
+            break;
+    }
+    snprintf(git_filename, sizeof(git_filename), "%s%s", Entry[i].git_path, filename + strlen(pathname));
+    printf("%s\n", git_filename);
 
     for (i = 0; commands[i].name != NULL; ++i) {
         if (!strcmp(action, commands[i].name)) {
@@ -310,34 +333,96 @@ static int find_sep(const char *message, int size, char sep)
     return i;
 }
 
+char *trimwhitespace(char *str)
+{
+    char *end;
+
+    // Trim leading space
+    while(isspace((unsigned char)*str)) str++;
+
+    if(*str == 0)  // All spaces?
+        return str;
+
+    // Trim trailing space
+    end = str + strlen(str) - 1;
+    while(end > str && isspace((unsigned char)*end)) end--;
+
+    // Write new null terminator
+    *(end+1) = 0;
+
+    return str;
+}
+
 static int parse_config(char *filename) {
     FILE *f;
     char buf[1024];
     char *pos = NULL;
+    char *begin;
+
+    int in_entry = 0;
+    int cnt = 0;
     if ((f = fopen(filename, "r")) == NULL) {
         perror("fopen error");
     }
     while (fgets(buf, sizeof buf, f) != NULL)
     {
+        begin = trimwhitespace(buf);
+        if (strlen(begin) == 0)
+            continue;
 
-        if ((pos = strchr(buf, '\n')) != NULL)
+        if ((pos = strchr(begin, '[')) == NULL)
+        {
+            if (in_entry == 0)
+                continue;
+        }
+        else
+        {
+            entry_index++;
+
+            *begin++ = '\0';
+            pos = strchr(begin, ']');
+            if (pos == NULL)
+            {
+                perror("config format error");
+                exit(1);
+            }
+
             *pos = '\0';
-        pos = strchr(buf, '=');
-        *pos = '\0';
-        pos++;
-        if (strcmp(buf, "GIT_REMOTE") == 0) {
-            memcpy(GIT_REMOTE, pos, strlen(pos));
-            printf("GIT_REMOTE: %s\n", GIT_REMOTE);
-        } else if (strcmp(buf, "GIT_PATH") == 0) {
-            memcpy(GIT_PATH, pos, strlen(pos));
-            printf("GIT_PATH: %s\n", GIT_PATH);
-        } else if (strcmp(buf, "WEB_PATH") == 0) {
-            memcpy(WEB_PATH, pos, strlen(pos));
-            printf("WEB_PATH: %s\n", WEB_PATH);
+            memcpy(Entry[entry_index].name, begin, strlen(begin)+1);
+            in_entry = 1;
+            printf("GIT NAME: %s\n", Entry[entry_index].name);
+            continue;
+        }
+
+
+        if ((pos = strchr(begin, '\n')) != NULL)
+            *pos = '\0';
+
+        pos = strchr(begin, '=');
+        if (pos == NULL)
+        {
+            perror("config format error");
+            exit(-1);
+        }
+        *pos++ = '\0';
+        if (strcmp(begin, "GIT_REMOTE") == 0) {
+            memcpy(Entry[entry_index].git_remote, pos, strlen(pos));
+            printf("GIT_REMOTE: %s\n", Entry[entry_index].git_remote);
+        } else if (strcmp(begin, "GIT_PATH") == 0) {
+            memcpy(Entry[entry_index].git_path, pos, strlen(pos));
+            printf("GIT_PATH: %s\n", Entry[entry_index].git_path);
+        } else if (strcmp(begin, "WEB_PATH") == 0) {
+            memcpy(Entry[entry_index].web_path, pos, strlen(pos));
+            printf("WEB_PATH: %s\n", Entry[entry_index].web_path);
         }
     }
 
-//    exit(0);
+    if (entry_index == -1)
+    {
+        perror("config format error");
+        exit(-1);
+    }
+
     return 0;
 }
 
@@ -552,22 +637,30 @@ int main() {
     init();
     listenfd = socket_INIT();
 
-    rc = dir_exists(GIT_PATH);
-    if (rc == 1)
+    for (int i = 0; i <= entry_index; i++)
     {
-        rc = remove_directory(GIT_PATH);
-        if (rc < 0) {
+        rc = dir_exists(Entry[i].git_path);
+        if (rc == 1)
+        {
+//            rc = remove_directory(Entry[i].git_path);
+            snprintf(command, sizeof command, "rm -rf %s 2>&1", Entry[i].git_path);
+            rc_file = popen(command, "r");
+            rc = fread(command_buf, sizeof command_buf, 1, rc_file);
+            rc = pclose(rc_file);
+            if (rc < 0)
+            {
+                sys_error("remove directory error", errno);
+            }
+        }
+
+        snprintf(command, sizeof command, "git clone %s %s 2>&1", Entry[i].git_remote, Entry[i].git_path);
+        rc_file = popen(command, "r");
+        rc = fread(command_buf, sizeof command_buf, 1, rc_file);
+        rc = pclose(rc_file);
+        if (rc != 0)
+        {
             sys_error("git clone error", errno);
         }
-    }
-
-    snprintf(command, sizeof command, "git clone %s %s 2>&1", GIT_REMOTE, GIT_PATH);
-    rc_file = popen(command, "r");
-    rc = fread(command_buf, sizeof command_buf, 1, rc_file);
-    rc = pclose(rc_file);
-//    syslog(LOG_NOTICE, "rc %d", rc);
-    if (rc != 0) {
-        sys_error("git clone error", errno);
     }
 
     fds[0].fd = listenfd;
