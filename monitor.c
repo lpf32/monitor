@@ -504,17 +504,20 @@ int send_sentry(char *message, char *content)
 int git_fetch(char *tag)
 {
     int rc;
+    for (int i = 0; i <= entry_index; i++)
+    {
+        snprintf(command, sizeof command, "cd %s && git checkout master && git pull && git checkout %s 2>&1",
+                 Entry[i].git_path, tag);
+        rc_file = popen(command, "r");
+        rc = fread(command_buf, sizeof command_buf, 1, rc_file);
+        rc = fclose(rc_file);
 
-    snprintf(command, sizeof command, "cd %s && git checkout master && git pull && git checkout %s 2>&1",
-             GIT_PATH, tag);
-    rc_file = popen(command, "r");
-    rc = fread(command_buf, sizeof command_buf, 1, rc_file);
-    rc = fclose(rc_file);
-
-    if (rc != 0) {
+        if (rc != 0)
+        {
 //        sys_error("git clone error", rc);
-        action_log("git clone error");
-        return 1;
+            action_log("git clone error");
+            return 1;
+        }
     }
     return 0;
 }
